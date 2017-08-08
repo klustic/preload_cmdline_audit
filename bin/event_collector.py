@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import logging
 import os
 import socket
 import struct
+import threading
 from time import gmtime, strftime
 
 
 MSG_STRUCT = b'<II256s1024s'
 MSG_HEADER = ['timestamp', 'pid', 'user', 'cmdline']
+
+def handle_connection(conn):
+    logger = logging.getLogger('handler')
+    d = dict(zip(MSG_HEADER, struct.unpack(MSG_STRUCT, conn.recv(struct.calcsize(MSG_STRUCT)))))
+    d['timestamp'] = strftime('%Y-%m-%d %H:%M:%S %z', gmtime(d['timestamp']))
+    d['user'] = d['user'].rstrip('\x00')
+    d['cmdline'] = d['cmdline'].rstrip('\x00')
+    logger.info(d)
+    return
 
 
 def main():
@@ -23,15 +34,13 @@ def main():
     s.bind(args.socket)
     s.listen(1)
 
+    logger = logging.getLogger('server')
+    logger.info('Listening for connections on {}...'.format(args.socket))
     while True:
-        print('[+] Listening for connections on {}...'.format(args.socket))
         conn, addr = s.accept()
-        d = dict(zip(MSG_HEADER, struct.unpack(MSG_STRUCT, conn.recv(struct.calcsize(MSG_STRUCT)))))
-        d['timestamp'] = strftime('%Y-%m-%d %H:%M:%S %z', gmtime(d['timestamp']))
-        d['user'] = d['user'].rstrip('\x00')
-        d['cmdline'] = d['cmdline'].rstrip('\x00')
-        print(json.dumps(d, indent=4))
+        threading.Thread(target=handle_connection, args=(conn,)).start()
     return
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     main()
